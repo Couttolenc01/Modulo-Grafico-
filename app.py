@@ -111,3 +111,15 @@ if "CPK" in df_resumen.columns:
 if "kmstotales" in df_resumen.columns:
     df_resumen["kmstotales"] = df_resumen["kmstotales"].round(2)
 st.dataframe(df_resumen, use_container_width=True)
+
+# Mostrar resumen agrupado por Tracto y Ruta
+st.markdown("### Resumen promedio por Tracto y Ruta")
+
+if "Tracto" in df_filtrado.columns and "Ruta Estados" in df_filtrado.columns:
+    df_agrupado = df_filtrado.groupby(["Tracto", "Ruta Estados"]).agg({
+        "CPK": "mean",
+        "kmstotales": "sum"
+    }).reset_index()
+    df_agrupado["CPK"] = df_agrupado["CPK"].round(2)
+    df_agrupado["kmstotales"] = df_agrupado["kmstotales"].round(2)
+    st.dataframe(df_agrupado, use_container_width=True)
