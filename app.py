@@ -19,8 +19,15 @@ df["CPK"] = df["Costo Total"] / df["kmstotales"]
 estados = sorted(df["Estado Origen"].dropna().unique())
 estado_seleccionado = st.selectbox("Selecciona un estado de origen:", estados)
 
+
 # Filtrar por estado seleccionado
 df_filtrado = df[df["Estado Origen"] == estado_seleccionado]
+
+tractos = ["--- Mostrar todos ---"] + sorted(df_filtrado["Tracto"].dropna().astype(str).unique())
+tracto_seleccionado = st.selectbox("Selecciona un tracto:", tractos)
+
+if tracto_seleccionado != "--- Mostrar todos ---":
+    df_filtrado = df_filtrado[df_filtrado["Tracto"].astype(str) == tracto_seleccionado]
 
 # Obtener rutas únicas y limpiar CPK inválido
 df_rutas = df_filtrado[["lat_origen", "lon_origen", "lat_destino", "lon_destino", "Ruta Estados", "CPK"]]
@@ -31,8 +38,18 @@ fig = go.Figure()
 cpk_max = df_rutas["CPK"].max()
 cpk_min = df_rutas["CPK"].min()
 
+# Evitar división entre cero
+rango_cpk = cpk_max - cpk_min
+if rango_cpk == 0:
+    rango_cpk = 1  # evita división por cero más adelante
+
 for _, row in df_rutas.iterrows():
-    color_val = (row["CPK"] - cpk_min) / (cpk_max - cpk_min)
+    if not (-118 <= row["lon_origen"] <= -86 and 14 <= row["lat_origen"] <= 33):
+        continue
+    if not (-118 <= row["lon_destino"] <= -86 and 14 <= row["lat_destino"] <= 33):
+        continue
+
+    color_val = (row["CPK"] - cpk_min) / rango_cpk
     color_val = max(0, min(1, color_val))  # asegurar rango válido
     color = f"rgba({int(255 * color_val)}, 0, {int(255 * (1 - color_val))}, 0.8)"
     
@@ -42,7 +59,30 @@ for _, row in df_rutas.iterrows():
         mode="lines",
         line=dict(width=2, color=color),
         hoverinfo="text",
+        name=f"Ruta: {row['Ruta Estados']} (CPK: {row['CPK']:.2f})",
         text=f"Ruta: {row['Ruta Estados']}<br>CPK: {row['CPK']:.2f}"
+    ))
+
+    fig.add_trace(go.Scattergeo(
+        lon=[row["lon_origen"]],
+        lat=[row["lat_origen"]],
+        mode="markers+text",
+        marker=dict(size=6, color="green", symbol="circle"),
+        text="Origen",
+        textposition="top center",
+        hoverinfo="skip",
+        showlegend=False
+    ))
+
+    fig.add_trace(go.Scattergeo(
+        lon=[row["lon_destino"]],
+        lat=[row["lat_destino"]],
+        mode="markers+text",
+        marker=dict(size=6, color="red", symbol="x"),
+        text="Destino",
+        textposition="bottom center",
+        hoverinfo="skip",
+        showlegend=False
     ))
 
 # Mostrar solo México (ajuste de límites del mapa)
@@ -52,7 +92,7 @@ fig.update_geos(
     landcolor="rgb(240, 240, 240)",
     showcountries=True,
     countrycolor="Black",
-    fitbounds="locations",
+    showcoastlines=True,
     lonaxis_range=[-118, -86],  # México
     lataxis_range=[14, 33]
 )
