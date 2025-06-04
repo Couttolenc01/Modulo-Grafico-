@@ -30,7 +30,7 @@ if tracto_seleccionado != "--- Mostrar todos ---":
     df_filtrado = df_filtrado[df_filtrado["Tracto"].astype(str) == tracto_seleccionado]
 
 # Obtener rutas únicas y limpiar CPK inválido
-df_rutas = df_filtrado[["lat_origen", "lon_origen", "lat_destino", "lon_destino", "Ruta Estados", "CPK"]]
+df_rutas = df_filtrado[["lat_origen", "lon_origen", "lat_destino", "lon_destino", "Ruta Estados", "Tracto", "CPK"]]
 df_rutas = df_rutas[df_rutas["CPK"].notna() & (df_rutas["CPK"] != float("inf"))].drop_duplicates()
 
 # Crear figura
@@ -99,3 +99,15 @@ fig.update_geos(
 
 fig.update_layout(height=600, margin={"r":0,"t":30,"l":0,"b":0})
 st.plotly_chart(fig, use_container_width=True)
+
+# Mostrar tabla resumen de las rutas visualizadas
+st.markdown("### Resumen de rutas visualizadas")
+columnas = ["Ruta Estados", "Tracto", "CPK", "kmstotales"]
+columnas_validas = [col for col in columnas if col in df_filtrado.columns]
+df_resumen = df_filtrado[columnas_validas].drop_duplicates().sort_values(by="CPK", ascending=False)
+
+if "CPK" in df_resumen.columns:
+    df_resumen["CPK"] = df_resumen["CPK"].round(2)
+if "kmstotales" in df_resumen.columns:
+    df_resumen["kmstotales"] = df_resumen["kmstotales"].round(2)
+st.dataframe(df_resumen, use_container_width=True)
