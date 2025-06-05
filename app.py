@@ -113,10 +113,19 @@ if "CPK" in df_resumen.columns:
     df_resumen["CPK"] = df_resumen["CPK"].round(2)
 if "kmstotales" in df_resumen.columns:
     df_resumen["kmstotales"] = df_resumen["kmstotales"].round(2)
- # Marcar como outlier si CPK es alto
-if "CPK" in df_resumen.columns:
-    df_resumen["Advertencia"] = df_resumen["CPK"].apply(lambda x: "⚠️" if x > 1000 else "")
-st.dataframe(df_resumen, use_container_width=True)
+
+# Aplicar resaltado condicional a filas con CPK alto
+def resaltar_cpk_alto(row):
+    if "CPK" in row and row["CPK"] > 1000:
+        return ['background-color: #fff3cd'] * len(row)  # color amarillo claro
+    else:
+        return [''] * len(row)
+
+if not df_resumen.empty:
+    st.dataframe(
+        df_resumen.style.apply(resaltar_cpk_alto, axis=1),
+        use_container_width=True
+    )
 
 # Mostrar resumen agrupado por Tracto y Ruta
 st.markdown("### Resumen promedio por Tracto y Ruta")
