@@ -29,9 +29,12 @@ tracto_seleccionado = st.selectbox("Selecciona un tracto:", tractos)
 if tracto_seleccionado != "--- Mostrar todos ---":
     df_filtrado = df_filtrado[df_filtrado["Tracto"].astype(str) == tracto_seleccionado]
 
+# Filtrar filas con valores válidos en CPK y kmstotales
+df_filtrado = df_filtrado[df_filtrado["CPK"].notna() & df_filtrado["kmstotales"].notna()]
+
 # Obtener rutas únicas y limpiar CPK inválido
 df_rutas = df_filtrado[["lat_origen", "lon_origen", "lat_destino", "lon_destino", "Ruta Estados", "Tracto", "CPK"]]
-df_rutas = df_rutas[df_rutas["CPK"].notna() & (df_rutas["CPK"] != float("inf"))].drop_duplicates()
+df_rutas = df_rutas[df_rutas["CPK"].notna() & (df_rutas["CPK"] != float("inf"))]
 
 # Crear figura
 fig = go.Figure()
@@ -110,6 +113,9 @@ if "CPK" in df_resumen.columns:
     df_resumen["CPK"] = df_resumen["CPK"].round(2)
 if "kmstotales" in df_resumen.columns:
     df_resumen["kmstotales"] = df_resumen["kmstotales"].round(2)
+ # Marcar como outlier si CPK es alto
+if "CPK" in df_resumen.columns:
+    df_resumen["Advertencia"] = df_resumen["CPK"].apply(lambda x: "⚠️" if x > 1000 else "")
 st.dataframe(df_resumen, use_container_width=True)
 
 # Mostrar resumen agrupado por Tracto y Ruta
