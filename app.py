@@ -105,14 +105,29 @@ st.plotly_chart(fig, use_container_width=True)
 
 # Mostrar tabla resumen de las rutas visualizadas
 st.markdown("### Resumen de rutas visualizadas")
-columnas = ["Ruta Estados", "Tracto", "CPK", "kmstotales"]
+columnas = [
+    "Ruta Estados",
+    "Tracto",
+    "kmstotales",
+    "Costo por carga",
+    "Costo Peajes",
+    "Costo Mantenimiento",
+    "Costo Total",
+    "CPK"
+]
 columnas_validas = [col for col in columnas if col in df_filtrado.columns]
 df_resumen = df_filtrado[columnas_validas].drop_duplicates().sort_values(by="CPK", ascending=False)
 
-if "CPK" in df_resumen.columns:
-    df_resumen["CPK"] = df_resumen["CPK"].round(2)
-if "kmstotales" in df_resumen.columns:
-    df_resumen["kmstotales"] = df_resumen["kmstotales"].round(2)
+for col in [
+    "CPK",
+    "kmstotales",
+    "Costo por carga",
+    "Costo Peajes",
+    "Costo Mantenimiento",
+    "Costo Total"
+]:
+    if col in df_resumen.columns:
+        df_resumen[col] = df_resumen[col].map(lambda x: round(x, 2))
 
 # Aplicar resaltado condicional a filas con CPK alto
 def resaltar_cpk_alto(row):
