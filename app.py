@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 st.set_page_config(layout="wide")
-st.title("Visualización de Rutas por Tracto (CPK Heatmap)")
+st.title("Visualización de Rutas por Tractos")
 
 # Leer el archivo Excel
 df = pd.read_excel("Base_final.xlsx")
@@ -26,6 +26,10 @@ df_filtrado = df[df["Estado Origen"] == estado_seleccionado]
 tractos = ["--- Mostrar todos ---"] + sorted(df_filtrado["Tracto"].dropna().astype(str).unique())
 tracto_seleccionado = st.selectbox("Selecciona un tracto:", tractos)
 
+from streamlit_folium import st_folium
+import folium
+
+# Filtrar por tracto seleccionado
 if tracto_seleccionado != "--- Mostrar todos ---":
     df_filtrado = df_filtrado[df_filtrado["Tracto"].astype(str) == tracto_seleccionado]
 
@@ -33,78 +37,72 @@ if tracto_seleccionado != "--- Mostrar todos ---":
 df_filtrado = df_filtrado[df_filtrado["CPK"].notna() & df_filtrado["kmstotales"].notna()]
 
 # Obtener rutas únicas y limpiar CPK inválido
-df_rutas = df_filtrado[["lat_origen", "lon_origen", "lat_destino", "lon_destino", "Ruta Estados", "Tracto", "CPK"]]
+df_rutas = df_filtrado[["lat_destino", "lon_destino", "lat_origen", "lon_origen", "Ruta Estados", "Tracto", "CPK"]]
 df_rutas = df_rutas[df_rutas["CPK"].notna() & (df_rutas["CPK"] != float("inf"))]
 
-# Crear figura
-fig = go.Figure()
-cpk_max = df_rutas["CPK"].max()
-cpk_min = df_rutas["CPK"].min()
+# Verificar si hay rutas con coordenadas faltantes
+rutas_invalidas = df_rutas[df_rutas[["lat_origen", "lon_origen", "lat_destino", "lon_destino"]].isna().any(axis=1)]
+if not rutas_invalidas.empty:
+    st.warning("⚠️ Existen rutas con coordenadas faltantes que no se mostrarán en el mapa. Esto puede deberse a errores u omisiones en el registro de datos.")
 
-# Evitar división entre cero
-rango_cpk = cpk_max - cpk_min
-if rango_cpk == 0:
-    rango_cpk = 1  # evita división por cero más adelante
 
+df_rutas = df_rutas.dropna(subset=["lat_origen", "lon_origen", "lat_destino", "lon_destino"])
+
+# Filtrar rutas fuera del rango geográfico razonable para México
+def coordenadas_validas(df):
+    return (
+        df["lat_origen"].between(14, 33) &
+        df["lon_origen"].between(-120, -86) &
+        df["lat_destino"].between(14, 33) &
+        df["lon_destino"].between(-120, -86)
+    )
+
+rutas_invalidas = df_rutas[~coordenadas_validas(df_rutas)]
+if not rutas_invalidas.empty:
+    st.warning(f"⚠️ Se descartaron {len(rutas_invalidas)} rutas con coordenadas fuera del rango esperado. Verifica los datos.")
+
+df_rutas = df_rutas[coordenadas_validas(df_rutas)]
+
+# Opcional: mostrar rutas descartadas
+with st.expander("Ver rutas descartadas"):
+    st.dataframe(rutas_invalidas[["Tracto", "Ruta Estados", "lat_origen", "lon_origen", "lat_destino", "lon_destino"]])
+
+# Crear mapa centrado en México
+m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
+
+# Agregar trayectos al mapa
 for _, row in df_rutas.iterrows():
-    if not (-118 <= row["lon_origen"] <= -86 and 14 <= row["lat_origen"] <= 33):
-        continue
-    if not (-118 <= row["lon_destino"] <= -86 and 14 <= row["lat_destino"] <= 33):
-        continue
+    destino = [row["lat_destino"], row["lon_destino"]]
+    origen = [row["lat_origen"], row["lon_origen"]]
+    ruta = [origen, destino]
 
-    color_val = (row["CPK"] - cpk_min) / rango_cpk
-    color_val = max(0, min(1, color_val))  # asegurar rango válido
-    color = f"rgba({int(255 * color_val)}, 0, {int(255 * (1 - color_val))}, 0.8)"
-    
-    fig.add_trace(go.Scattergeo(
-        lon=[row["lon_origen"], row["lon_destino"]],
-        lat=[row["lat_origen"], row["lat_destino"]],
-        mode="lines",
-        line=dict(width=2, color=color),
-        hoverinfo="text",
-        name=f"Ruta: {row['Ruta Estados']} (CPK: {row['CPK']:.2f})",
-        text=f"Ruta: {row['Ruta Estados']}<br>CPK: {row['CPK']:.2f}"
-    ))
+    folium.PolyLine(
+        ruta,
+        color="blue",
+        weight=3,
+        opacity=0.7,
+        tooltip=f"Tracto: {row['Tracto']}<br>Ruta: {row['Ruta Estados']}<br>CPK: {row['CPK']:.2f}"
+    ).add_to(m)
 
-    fig.add_trace(go.Scattergeo(
-        lon=[row["lon_origen"]],
-        lat=[row["lat_origen"]],
-        mode="markers+text",
-        marker=dict(size=6, color="green", symbol="circle"),
-        text="Origen",
-        textposition="top center",
-        hoverinfo="skip",
-        showlegend=False
-    ))
+    folium.CircleMarker(
+        location=origen,
+        radius=5,
+        color="green",
+        fill=True,
+        fill_opacity=0.8,
+        tooltip="Origen"
+    ).add_to(m)
 
-    fig.add_trace(go.Scattergeo(
-        lon=[row["lon_destino"]],
-        lat=[row["lat_destino"]],
-        mode="markers+text",
-        marker=dict(size=6, color="red", symbol="x"),
-        text="Destino",
-        textposition="bottom center",
-        hoverinfo="skip",
-        showlegend=False
-    ))
+    folium.Marker(
+        location=destino,
+        icon=folium.Icon(color="red", icon="remove"),
+        tooltip="Destino"
+    ).add_to(m)
 
-# Mostrar solo México (ajuste de límites del mapa)
-fig.update_geos(
-    resolution=50,
-    showland=True,
-    landcolor="rgb(240, 240, 240)",
-    showcountries=True,
-    countrycolor="Black",
-    showcoastlines=True,
-    lonaxis_range=[-118, -86],  # México
-    lataxis_range=[14, 33]
-)
-
-fig.update_layout(height=600, margin={"r":0,"t":30,"l":0,"b":0})
-st.plotly_chart(fig, use_container_width=True)
+st_folium(m, returned_objects=[], height=500, width=1200)
+st.markdown("### Resumen de rutas visualizadas", unsafe_allow_html=True)
 
 # Mostrar tabla resumen de las rutas visualizadas
-st.markdown("### Resumen de rutas visualizadas")
 columnas = [
     "Ruta Estados",
     "Tracto",
@@ -145,11 +143,10 @@ if not df_resumen.empty:
 # Mostrar resumen agrupado por Tracto y Ruta
 st.markdown("### Resumen promedio por Tracto y Ruta")
 
-if "Tracto" in df_filtrado.columns and "Ruta Estados" in df_filtrado.columns:
-    df_agrupado = df_filtrado.groupby(["Tracto", "Ruta Estados"]).agg({
-        "CPK": "mean",
-        "kmstotales": "sum"
-    }).reset_index()
-    df_agrupado["CPK"] = df_agrupado["CPK"].round(2)
-    df_agrupado["kmstotales"] = df_agrupado["kmstotales"].round(2)
-    st.dataframe(df_agrupado, use_container_width=True)
+df_agrupado = df_filtrado.groupby(["Tracto", "Ruta Estados"]).agg({
+    "CPK": "mean",
+    "kmstotales": "sum"
+}).reset_index()
+df_agrupado["CPK"] = df_agrupado["CPK"].round(2)
+df_agrupado["kmstotales"] = df_agrupado["kmstotales"].round(2)
+st.dataframe(df_agrupado, use_container_width=True)
