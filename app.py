@@ -3,9 +3,91 @@ import pandas as pd
 import plotly.graph_objects as go
 import folium
 from streamlit_folium import st_folium
-import random
+
 
 st.set_page_config(layout="wide")
+st.markdown(
+    """
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .main {
+            background-color: #fbfbfb;
+        }
+
+        body, .reportview-container {
+            color: #fbfbfb;
+        }
+
+        h1 {
+            color: #193a73;
+            font-weight: bold;
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        h2, h3, h4 {
+            color: #193a73;
+            font-weight: bold;
+        }
+        .stSelectbox > div > div {
+            background-color: white;
+            color: #193a73;
+            font-weight: bold;
+        }
+        .stSelectbox label {
+            color: #193a73;
+            font-weight: bold;
+        }
+        .stButton button {
+            background-color: #fbc408;
+            color: black;
+            font-weight: bold;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            transition: background-color 0.3s;
+        }
+        .stButton button:hover {
+            background-color: #ffd700;
+        }
+        .stDataFrame thead tr th {
+            background-color: #193a73;
+            color: white;
+        }
+        .stDataFrame tbody tr {
+            background-color: #ffffff;
+        }
+    </style>
+    <canvas id="dynamic-bg" width="100" height="100" style="position: fixed; top: 0; left: 0; z-index: -1; width: 100%; height: 100%; pointer-events: none;"></canvas>
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const canvas = document.getElementById('dynamic-bg');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        function resize() {
+          canvas.width = window.innerWidth;
+          canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+        let t = 0;
+        function draw() {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          for (let x = 0; x < canvas.width; x += 50) {
+            for (let y = 0; y < canvas.height; y += 50) {
+              ctx.beginPath();
+              ctx.arc(x + 10*Math.sin(t + x/100 + y/100), y + 10*Math.cos(t + x/100 - y/100), 3, 0, Math.PI * 2);
+              ctx.fillStyle = '#fbc408';
+              ctx.fill();
+            }
+          }
+          t += 0.01;
+          requestAnimationFrame(draw);
+        }
+        draw();
+    });
+    </script>
+    """,
+    unsafe_allow_html=True
+)
 st.title("Visualización de Rutas por Tractos")
 
 # Leer el archivo Excel con caché
@@ -44,11 +126,32 @@ elif ciudad_destino != "--- Mostrar todas ---":
 else:
     df_filtrado = df.copy()
 
+# Mostrar CPK promedio general de la ruta (antes de filtrar por tracto)
+if not df_filtrado.empty:
+    cpk_medio = round(df_filtrado["CPK"].dropna().mean(), 2)
+    st.markdown(f"""
+    <div style="position: relative; background-color: #fbc408; padding: 1rem 1.5rem; border-radius: 0.5rem; box-shadow: 0 2px 6px rgba(0,0,0,0.2); margin-top: 1rem; margin-bottom: 1rem; max-width: 320px;">
+        <h4 style="margin: 0; color: #193a73; font-weight: bold; font-size: 1.2rem;">
+            CPK promedio de la ruta: {cpk_medio}
+        </h4>
+    </div>
+    """, unsafe_allow_html=True)
+
 tractos = ["--- Mostrar todos ---"] + sorted(df_filtrado["Tracto"].dropna().astype(str).unique())
 tracto_seleccionado = st.selectbox("Selecciona un tracto:", tractos)
 
 if tracto_seleccionado != "--- Mostrar todos ---":
     df_filtrado = df_filtrado[df_filtrado["Tracto"].astype(str) == tracto_seleccionado]
+
+if tracto_seleccionado != "--- Mostrar todos ---" and not df_filtrado.empty:
+    cpk_individual = round(df_filtrado["CPK"].dropna().mean(), 2)
+    st.markdown(f"""
+    <div style="background-color: #fbc408; padding: 1rem; border-radius: 0.5rem; text-align: center; margin: 1rem 0;">
+        <h3 style="margin: 0; color: #193a73; font-weight: bold;">
+            CPK de este tracto en esta ruta: {cpk_individual}
+        </h3>
+    </div>
+    """, unsafe_allow_html=True)
 
 if len(df_filtrado) > 2000:
     st.warning("⚠️ Hay muchas rutas para mostrar. Filtra por origen, destino o tracto para mejorar el rendimiento.")
@@ -90,11 +193,6 @@ df_rutas = df_rutas[coordenadas_validas(df_rutas)]
 with st.expander("Ver rutas descartadas"):
     st.dataframe(rutas_invalidas[["Tracto", "Ruta Estados", "lat_origen", "lon_origen", "lat_destino", "lon_destino"]])
 
-# Mostrar CPK promedio del tracto en esta ruta
-if not df_filtrado.empty:
-    cpk_medio = round(df_filtrado["CPK"].mean(), 2)
-    st.markdown(f"**CPK promedio del tracto en esta ruta:** {cpk_medio}")
-
 # Crear mapa centrado en México
 m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
 
@@ -109,14 +207,12 @@ for _, row in df_rutas.iterrows():
     origen = [row["lat_origen"], row["lon_origen"]]
     ruta = [origen, destino]
 
-    color = f"#{random.randint(0, 0xFFFFFF):06x}"
-
     folium.PolyLine(
         ruta,
-        color=color,
-        weight=3 if mostrar_todas_rutas else 4,
+        color="blue",
+        weight=3,
         opacity=0.4 if mostrar_todas_rutas else 0.9,
-        tooltip=f"Tracto: {row['Tracto']}"
+        tooltip=f"Tracto: {row['Tracto']}<br>Ruta: {row['Ruta Estados']}<br>CPK: {row['CPK']:.2f}"
     ).add_to(m)
 
     folium.CircleMarker(
@@ -131,57 +227,47 @@ for _, row in df_rutas.iterrows():
     folium.Marker(
         location=destino,
         icon=folium.Icon(color="red" if not mostrar_todas_rutas else "lightred", icon="remove"),
-        tooltip=f"Destino - Tracto: {row['Tracto']}" if not mostrar_todas_rutas else None
+        tooltip="Destino" if not mostrar_todas_rutas else None
     ).add_to(m)
 
-st_folium(m, returned_objects=[], height=500, width=1200)
-st.markdown("### Resumen de rutas visualizadas", unsafe_allow_html=True)
 
-# Mostrar tabla resumen de las rutas visualizadas
-columnas = [
-    "Ruta Estados",
-    "Tracto",
-    "kmstotales",
-    "Costo por carga",
-    "Costo Peajes",
-    "Costo Mantenimiento",
-    "Costo Total",
-    "CPK"
-]
-columnas_validas = [col for col in columnas if col in df_filtrado.columns]
-df_resumen = df_filtrado[columnas_validas].sort_values(by="CPK", ascending=False)
+with st.container():
+    st_folium(m, returned_objects=[], height=500, width=1200)
 
-for col in [
-    "CPK",
-    "kmstotales",
-    "Costo por carga",
-    "Costo Peajes",
-    "Costo Mantenimiento",
-    "Costo Total"
-]:
-    if col in df_resumen.columns:
-        df_resumen[col] = df_resumen[col].map(lambda x: round(x, 2))
+    st.markdown("### Resumen de rutas visualizadas", unsafe_allow_html=True)
 
-# Aplicar resaltado condicional a filas con CPK alto
-def resaltar_cpk_alto(row):
-    if "CPK" in row and row["CPK"] > 1000:
-        return ['background-color: #fff3cd'] * len(row)  # color amarillo claro
-    else:
-        return [''] * len(row)
+    columnas = [
+        "Ruta Estados",
+        "Tracto",
+        "kmstotales",
+        "Costo por carga",
+        "Costo Peajes",
+        "Costo Mantenimiento",
+        "Costo Total",
+        "CPK"
+    ]
+    columnas_validas = [col for col in columnas if col in df_filtrado.columns]
+    df_resumen = df_filtrado[columnas_validas].drop_duplicates().sort_values(by="CPK", ascending=False)
 
-if not df_resumen.empty:
-    st.dataframe(
-        df_resumen.style.apply(resaltar_cpk_alto, axis=1),
-        use_container_width=True
-    )
+    for col in [
+        "CPK",
+        "kmstotales",
+        "Costo por carga",
+        "Costo Peajes",
+        "Costo Mantenimiento",
+        "Costo Total"
+    ]:
+        if col in df_resumen.columns:
+            df_resumen[col] = df_resumen[col].map(lambda x: round(x, 2))
 
-# Mostrar resumen agrupado por Tracto y Ruta
-st.markdown("### Resumen promedio por Tracto y Ruta")
+    def resaltar_cpk_alto(row):
+        if "CPK" in row and row["CPK"] > 1000:
+            return ['background-color: #fff3cd'] * len(row)
+        else:
+            return [''] * len(row)
 
-df_agrupado = df_filtrado.groupby(["Tracto", "Ruta Estados"]).agg({
-    "CPK": "mean",
-    "kmstotales": "sum"
-}).reset_index()
-df_agrupado["CPK"] = df_agrupado["CPK"].round(2)
-df_agrupado["kmstotales"] = df_agrupado["kmstotales"].round(2)
-st.dataframe(df_agrupado, use_container_width=True)
+    if not df_resumen.empty:
+        st.dataframe(
+            df_resumen.style.apply(resaltar_cpk_alto, axis=1),
+            use_container_width=True
+        )
