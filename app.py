@@ -7,6 +7,8 @@ st.title("Visualización de Rutas por Tractos")
 
 # Leer el archivo Excel
 df = pd.read_excel("Base_final.xlsx")
+# df["ruta_completa"] = df["Origen"] + " - " + df["Destino"]
+df["ruta_completa"] = df["Ruta Estados"]
 
 # Asegurar que kmstotales no sea 0 ni NaN
 df = df[df["kmstotales"].notna() & (df["kmstotales"] > 0)]
@@ -15,23 +17,35 @@ df = df[df["kmstotales"].notna() & (df["kmstotales"] > 0)]
 df["Costo Total"] = df["Costo por carga"] + df["Costo Peajes"] + df["Costo Mantenimiento"]
 df["CPK"] = df["Costo Total"] / df["kmstotales"]
 
-# 👉 Crear selector de estado basado en "Estado Origen"
-estados = sorted(df["Estado Origen"].dropna().unique())
-estado_seleccionado = st.selectbox("Selecciona un estado de origen:", estados)
 
+# 👉 Selector por ciudad de origen y destino
+# Asegúrate de que las columnas existan. Si no, ajusta los nombres.
+ciudad_origenes = sorted(df["Ciudad Origen"].dropna().unique()) if "Ciudad Origen" in df.columns else []
+ciudad_destinos = sorted(df["Ciudad Destino"].dropna().unique()) if "Ciudad Destino" in df.columns else []
 
-# Filtrar por estado seleccionado
-df_filtrado = df[df["Estado Origen"] == estado_seleccionado]
+ciudad_origen = st.selectbox("Selecciona ciudad de origen:", ["--- Mostrar todas ---"] + ciudad_origenes)
+ciudad_destino = st.selectbox("Selecciona ciudad de destino:", ["--- Mostrar todas ---"] + ciudad_destinos)
+
+if ciudad_origen != "--- Mostrar todas ---" and ciudad_destino != "--- Mostrar todas ---":
+    df_filtrado = df[
+        (df["Ciudad Origen"] == ciudad_origen) &
+        (df["Ciudad Destino"] == ciudad_destino)
+    ]
+elif ciudad_origen != "--- Mostrar todas ---":
+    df_filtrado = df[df["Ciudad Origen"] == ciudad_origen]
+elif ciudad_destino != "--- Mostrar todas ---":
+    df_filtrado = df[df["Ciudad Destino"] == ciudad_destino]
+else:
+    df_filtrado = df.copy()
 
 tractos = ["--- Mostrar todos ---"] + sorted(df_filtrado["Tracto"].dropna().astype(str).unique())
 tracto_seleccionado = st.selectbox("Selecciona un tracto:", tractos)
 
-from streamlit_folium import st_folium
-import folium
-
-# Filtrar por tracto seleccionado
 if tracto_seleccionado != "--- Mostrar todos ---":
     df_filtrado = df_filtrado[df_filtrado["Tracto"].astype(str) == tracto_seleccionado]
+
+from streamlit_folium import st_folium
+import folium
 
 # Filtrar filas con valores válidos en CPK y kmstotales
 df_filtrado = df_filtrado[df_filtrado["CPK"].notna() & df_filtrado["kmstotales"].notna()]
@@ -66,6 +80,11 @@ df_rutas = df_rutas[coordenadas_validas(df_rutas)]
 # Opcional: mostrar rutas descartadas
 with st.expander("Ver rutas descartadas"):
     st.dataframe(rutas_invalidas[["Tracto", "Ruta Estados", "lat_origen", "lon_origen", "lat_destino", "lon_destino"]])
+
+# Mostrar CPK promedio del tracto en esta ruta
+if not df_filtrado.empty:
+    cpk_medio = round(df_filtrado["CPK"].mean(), 2)
+    st.markdown(f"**CPK promedio del tracto en esta ruta:** {cpk_medio}")
 
 # Crear mapa centrado en México
 m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
