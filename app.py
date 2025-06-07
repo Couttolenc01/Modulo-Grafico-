@@ -1,14 +1,25 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import folium
+from streamlit_folium import st_folium
+import random
 
 st.set_page_config(layout="wide")
 st.title("Visualización de Rutas por Tractos")
 
-# Leer el archivo Excel
-df = pd.read_excel("Base_final.xlsx")
-# df["ruta_completa"] = df["Origen"] + " - " + df["Destino"]
-df["ruta_completa"] = df["Ruta Estados"]
+# Leer el archivo Excel con caché
+@st.cache_data
+def cargar_datos():
+    return pd.read_excel("Base_final.xlsx")
+
+df = cargar_datos()
+
+# Crear columna combinada de ruta ciudad
+df["Ruta Ciudad"] = df["Ciudad Origen"].astype(str).str.strip() + " - " + df["Ciudad Destino"].astype(str).str.strip()
+
+df["Ciudad Origen"] = df["Ciudad Origen"].astype(str).str.strip()
+df["Ciudad Destino"] = df["Ciudad Destino"].astype(str).str.strip()
 
 # Asegurar que kmstotales no sea 0 ni NaN
 df = df[df["kmstotales"].notna() & (df["kmstotales"] > 0)]
@@ -18,13 +29,8 @@ df["Costo Total"] = df["Costo por carga"] + df["Costo Peajes"] + df["Costo Mante
 df["CPK"] = df["Costo Total"] / df["kmstotales"]
 
 
-# 👉 Selector por ciudad de origen y destino
-# Asegúrate de que las columnas existan. Si no, ajusta los nombres.
-ciudad_origenes = sorted(df["Ciudad Origen"].dropna().unique()) if "Ciudad Origen" in df.columns else []
-ciudad_destinos = sorted(df["Ciudad Destino"].dropna().unique()) if "Ciudad Destino" in df.columns else []
-
-ciudad_origen = st.selectbox("Selecciona ciudad de origen:", ["--- Mostrar todas ---"] + ciudad_origenes)
-ciudad_destino = st.selectbox("Selecciona ciudad de destino:", ["--- Mostrar todas ---"] + ciudad_destinos)
+ciudad_origen = st.selectbox("Selecciona ciudad de origen:", ["--- Mostrar todas ---"] + sorted(df["Ciudad Origen"].dropna().unique()))
+ciudad_destino = st.selectbox("Selecciona ciudad de destino:", ["--- Mostrar todas ---"] + sorted(df["Ciudad Destino"].dropna().unique()))
 
 if ciudad_origen != "--- Mostrar todas ---" and ciudad_destino != "--- Mostrar todas ---":
     df_filtrado = df[
@@ -44,23 +50,25 @@ tracto_seleccionado = st.selectbox("Selecciona un tracto:", tractos)
 if tracto_seleccionado != "--- Mostrar todos ---":
     df_filtrado = df_filtrado[df_filtrado["Tracto"].astype(str) == tracto_seleccionado]
 
-from streamlit_folium import st_folium
-import folium
+if len(df_filtrado) > 2000:
+    st.warning("⚠️ Hay muchas rutas para mostrar. Filtra por origen, destino o tracto para mejorar el rendimiento.")
+    st.stop()
+
 
 # Filtrar filas con valores válidos en CPK y kmstotales
 df_filtrado = df_filtrado[df_filtrado["CPK"].notna() & df_filtrado["kmstotales"].notna()]
 
 # Obtener rutas únicas y limpiar CPK inválido
-df_rutas = df_filtrado[["lat_destino", "lon_destino", "lat_origen", "lon_origen", "Ruta Estados", "Tracto", "CPK"]]
+# Asegurarse de incluir todas las filas únicas por tracto, incluso si tienen misma ruta
+df_rutas = df_filtrado[["lat_destino", "lon_destino", "lat_origen", "lon_origen", "Ruta Estados", "Tracto", "CPK"]].dropna(subset=["lat_origen", "lon_origen", "lat_destino", "lon_destino"])
 df_rutas = df_rutas[df_rutas["CPK"].notna() & (df_rutas["CPK"] != float("inf"))]
 
 # Verificar si hay rutas con coordenadas faltantes
-rutas_invalidas = df_rutas[df_rutas[["lat_origen", "lon_origen", "lat_destino", "lon_destino"]].isna().any(axis=1)]
+rutas_invalidas = df_filtrado[["lat_destino", "lon_destino", "lat_origen", "lon_origen", "Ruta Estados", "Tracto", "CPK"]][
+    df_filtrado[["lat_destino", "lon_destino", "lat_origen", "lon_origen"]].isna().any(axis=1)
+]
 if not rutas_invalidas.empty:
     st.warning("⚠️ Existen rutas con coordenadas faltantes que no se mostrarán en el mapa. Esto puede deberse a errores u omisiones en el registro de datos.")
-
-
-df_rutas = df_rutas.dropna(subset=["lat_origen", "lon_origen", "lat_destino", "lon_destino"])
 
 # Filtrar rutas fuera del rango geográfico razonable para México
 def coordenadas_validas(df):
@@ -77,6 +85,7 @@ if not rutas_invalidas.empty:
 
 df_rutas = df_rutas[coordenadas_validas(df_rutas)]
 
+
 # Opcional: mostrar rutas descartadas
 with st.expander("Ver rutas descartadas"):
     st.dataframe(rutas_invalidas[["Tracto", "Ruta Estados", "lat_origen", "lon_origen", "lat_destino", "lon_destino"]])
@@ -90,32 +99,39 @@ if not df_filtrado.empty:
 m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
 
 # Agregar trayectos al mapa
+if tracto_seleccionado == "--- Mostrar todos ---":
+    mostrar_todas_rutas = True
+else:
+    mostrar_todas_rutas = False
+
 for _, row in df_rutas.iterrows():
     destino = [row["lat_destino"], row["lon_destino"]]
     origen = [row["lat_origen"], row["lon_origen"]]
     ruta = [origen, destino]
 
+    color = f"#{random.randint(0, 0xFFFFFF):06x}"
+
     folium.PolyLine(
         ruta,
-        color="blue",
-        weight=3,
-        opacity=0.7,
-        tooltip=f"Tracto: {row['Tracto']}<br>Ruta: {row['Ruta Estados']}<br>CPK: {row['CPK']:.2f}"
+        color=color,
+        weight=3 if mostrar_todas_rutas else 4,
+        opacity=0.4 if mostrar_todas_rutas else 0.9,
+        tooltip=f"Tracto: {row['Tracto']}"
     ).add_to(m)
 
     folium.CircleMarker(
         location=origen,
-        radius=5,
-        color="green",
+        radius=4 if mostrar_todas_rutas else 6,
+        color="green" if not mostrar_todas_rutas else "#88cc88",
         fill=True,
-        fill_opacity=0.8,
-        tooltip="Origen"
+        fill_opacity=0.6 if mostrar_todas_rutas else 0.9,
+        tooltip="Origen" if not mostrar_todas_rutas else None
     ).add_to(m)
 
     folium.Marker(
         location=destino,
-        icon=folium.Icon(color="red", icon="remove"),
-        tooltip="Destino"
+        icon=folium.Icon(color="red" if not mostrar_todas_rutas else "lightred", icon="remove"),
+        tooltip=f"Destino - Tracto: {row['Tracto']}" if not mostrar_todas_rutas else None
     ).add_to(m)
 
 st_folium(m, returned_objects=[], height=500, width=1200)
@@ -133,7 +149,7 @@ columnas = [
     "CPK"
 ]
 columnas_validas = [col for col in columnas if col in df_filtrado.columns]
-df_resumen = df_filtrado[columnas_validas].drop_duplicates().sort_values(by="CPK", ascending=False)
+df_resumen = df_filtrado[columnas_validas].sort_values(by="CPK", ascending=False)
 
 for col in [
     "CPK",
