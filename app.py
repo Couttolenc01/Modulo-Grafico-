@@ -126,8 +126,8 @@ elif ciudad_destino != "--- Mostrar todas ---":
 else:
     df_filtrado = df.copy()
 
-# Mostrar CPK promedio general de la ruta (antes de filtrar por tracto)
-if not df_filtrado.empty:
+# Mostrar CPK promedio solo cuando se haya seleccionado origen y destino
+if ciudad_origen != "--- Mostrar todas ---" and ciudad_destino != "--- Mostrar todas ---" and not df_filtrado.empty:
     cpk_medio = round(df_filtrado["CPK"].dropna().mean(), 2)
     st.markdown(f"""
     <div style="position: relative; background-color: #fbc408; padding: 1rem 1.5rem; border-radius: 0.5rem; box-shadow: 0 2px 6px rgba(0,0,0,0.2); margin-top: 1rem; margin-bottom: 1rem; max-width: 320px;">
@@ -146,10 +146,10 @@ if tracto_seleccionado != "--- Mostrar todos ---":
 if tracto_seleccionado != "--- Mostrar todos ---" and not df_filtrado.empty:
     cpk_individual = round(df_filtrado["CPK"].dropna().mean(), 2)
     st.markdown(f"""
-    <div style="background-color: #fbc408; padding: 1rem; border-radius: 0.5rem; text-align: center; margin: 1rem 0;">
-        <h3 style="margin: 0; color: #193a73; font-weight: bold;">
+    <div style="position: relative; background-color: #fbc408; padding: 1rem 1.5rem; border-radius: 0.5rem; box-shadow: 0 2px 6px rgba(0,0,0,0.2); margin-top: 1rem; margin-bottom: 1rem; max-width: 420px;">
+        <h4 style="margin: 0; color: #193a73; font-weight: bold; font-size: 1.2rem;">
             CPK de este tracto en esta ruta: {cpk_individual}
-        </h3>
+        </h4>
     </div>
     """, unsafe_allow_html=True)
 
