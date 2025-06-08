@@ -1,94 +1,49 @@
 import streamlit as st
+st.set_page_config(layout="wide")
 import pandas as pd
 import plotly.graph_objects as go
 import folium
 from streamlit_folium import st_folium
 
-
-st.set_page_config(layout="wide")
 st.markdown(
     """
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
-        .main {
-            background-color: #fbfbfb;
-        }
-
-        body, .reportview-container {
-            color: #fbfbfb;
-        }
-
-        h1 {
-            color: #193a73;
-            font-weight: bold;
-            font-size: 2.5rem;
-            margin-bottom: 1rem;
-        }
-        h2, h3, h4 {
-            color: #193a73;
-            font-weight: bold;
-        }
-        .stSelectbox > div > div {
-            background-color: white;
-            color: #193a73;
-            font-weight: bold;
-        }
-        .stSelectbox label {
-            color: #193a73;
-            font-weight: bold;
-        }
-        .stButton button {
-            background-color: #fbc408;
-            color: black;
-            font-weight: bold;
-            padding: 0.5rem 1rem;
-            border-radius: 0.375rem;
-            transition: background-color 0.3s;
-        }
-        .stButton button:hover {
-            background-color: #ffd700;
-        }
-        .stDataFrame thead tr th {
-            background-color: #193a73;
-            color: white;
-        }
-        .stDataFrame tbody tr {
-            background-color: #ffffff;
-        }
+    .main {
+        background-color: #fbfbfb;
+    }
+    body, .reportview-container {
+        color: #193a73;
+    }
+    h1, h2, h3, h4 {
+        color: #193a73;
+    }
+    .stSelectbox > div > div {
+        background-color: white;
+        color: #193a73;
+    }
+    .stSelectbox label {
+        color: #193a73;
+    }
+    .stButton button {
+        background-color: #fbc408;
+        color: black;
+    }
+    .stButton button:hover {
+        background-color: #ffd700;
+    }
+    .stDataFrame thead tr th {
+        background-color: #193a73;
+        color: white;
+    }
+    .stDataFrame tbody tr {
+        background-color: #ffffff;
+    }
     </style>
-    <canvas id="dynamic-bg" width="100" height="100" style="position: fixed; top: 0; left: 0; z-index: -1; width: 100%; height: 100%; pointer-events: none;"></canvas>
-    <script>
-    document.addEventListener("DOMContentLoaded", function () {
-        const canvas = document.getElementById('dynamic-bg');
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        function resize() {
-          canvas.width = window.innerWidth;
-          canvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resize);
-        resize();
-        let t = 0;
-        function draw() {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          for (let x = 0; x < canvas.width; x += 50) {
-            for (let y = 0; y < canvas.height; y += 50) {
-              ctx.beginPath();
-              ctx.arc(x + 10*Math.sin(t + x/100 + y/100), y + 10*Math.cos(t + x/100 - y/100), 3, 0, Math.PI * 2);
-              ctx.fillStyle = '#fbc408';
-              ctx.fill();
-            }
-          }
-          t += 0.01;
-          requestAnimationFrame(draw);
-        }
-        draw();
-    });
-    </script>
     """,
     unsafe_allow_html=True
 )
-st.title("Visualización de Rutas por Tractos")
+st.markdown("<h1 style='color:#193a73; font-size: 2.8rem; font-weight: 700;'>Visualización de Rutas por Tractos</h1>", unsafe_allow_html=True)
 
 # Leer el archivo Excel con caché
 @st.cache_data
@@ -109,7 +64,6 @@ df = df[df["kmstotales"].notna() & (df["kmstotales"] > 0)]
 # Calcular Costo Total y CPK
 df["Costo Total"] = df["Costo por carga"] + df["Costo Peajes"] + df["Costo Mantenimiento"]
 df["CPK"] = df["Costo Total"] / df["kmstotales"]
-
 
 ciudad_origen = st.selectbox("Selecciona ciudad de origen:", ["--- Mostrar todas ---"] + sorted(df["Ciudad Origen"].dropna().unique()))
 ciudad_destino = st.selectbox("Selecciona ciudad de destino:", ["--- Mostrar todas ---"] + sorted(df["Ciudad Destino"].dropna().unique()))
@@ -153,6 +107,7 @@ if tracto_seleccionado != "--- Mostrar todos ---" and not df_filtrado.empty:
     </div>
     """, unsafe_allow_html=True)
 
+
 if len(df_filtrado) > 2000:
     st.warning("⚠️ Hay muchas rutas para mostrar. Filtra por origen, destino o tracto para mejorar el rendimiento.")
     st.stop()
@@ -193,8 +148,8 @@ df_rutas = df_rutas[coordenadas_validas(df_rutas)]
 with st.expander("Ver rutas descartadas"):
     st.dataframe(rutas_invalidas[["Tracto", "Ruta Estados", "lat_origen", "lon_origen", "lat_destino", "lon_destino"]])
 
-# Crear mapa centrado en México
-m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
+# Crear mapa centrado en México con estilo moderno
+m = folium.Map(location=[23.6345, -102.5528], zoom_start=5, tiles="OpenStreetMap")
 
 # Agregar trayectos al mapa
 if tracto_seleccionado == "--- Mostrar todos ---":
@@ -207,26 +162,39 @@ for _, row in df_rutas.iterrows():
     origen = [row["lat_origen"], row["lon_origen"]]
     ruta = [origen, destino]
 
+    cpk = row["CPK"]
+    if cpk < 5:
+        color = "green"
+    elif cpk < 10:
+        color = "orange"
+    else:
+        color = "red"
+
+    tooltip_text = f"Tracto: {row['Tracto']}<br>Ruta: {row['Ruta Estados']}<br>CPK: {row['CPK']:.2f}"
+    tooltip_style = ""
     folium.PolyLine(
         ruta,
-        color="blue",
+        color=color,
         weight=3,
         opacity=0.4 if mostrar_todas_rutas else 0.9,
-        tooltip=f"Tracto: {row['Tracto']}<br>Ruta: {row['Ruta Estados']}<br>CPK: {row['CPK']:.2f}"
+        tooltip=folium.Tooltip(tooltip_text, style=tooltip_style)
     ).add_to(m)
+
+    color_circle = "green"
 
     folium.CircleMarker(
         location=origen,
         radius=4 if mostrar_todas_rutas else 6,
-        color="green" if not mostrar_todas_rutas else "#88cc88",
+        color=color_circle,
         fill=True,
         fill_opacity=0.6 if mostrar_todas_rutas else 0.9,
         tooltip="Origen" if not mostrar_todas_rutas else None
     ).add_to(m)
 
+    icon_color = "red"
     folium.Marker(
         location=destino,
-        icon=folium.Icon(color="red" if not mostrar_todas_rutas else "lightred", icon="remove"),
+        icon=folium.Icon(color=icon_color, icon="remove"),
         tooltip="Destino" if not mostrar_todas_rutas else None
     ).add_to(m)
 
@@ -271,3 +239,36 @@ with st.container():
             df_resumen.style.apply(resaltar_cpk_alto, axis=1),
             use_container_width=True
         )
+
+    import altair as alt
+
+    # Filtrar para la ruta seleccionada, o usar todos si no se seleccionó una ruta específica
+    df_ruta_sin_tracto = df[
+        (df["Ciudad Origen"] == ciudad_origen) &
+        (df["Ciudad Destino"] == ciudad_destino)
+    ] if ciudad_origen != "--- Mostrar todas ---" and ciudad_destino != "--- Mostrar todas ---" else df
+
+    df_ruta_sin_tracto = df_ruta_sin_tracto[df_ruta_sin_tracto["CPK"].notna()]
+
+    if not df_ruta_sin_tracto.empty and "Tracto" in df_ruta_sin_tracto.columns:
+        # Ordenar por CPK descendente, luego obtener el primer registro por tracto (el de mayor CPK), y luego tomar los 5 mayores
+        top5 = (
+            df_ruta_sin_tracto
+            .sort_values("CPK", ascending=False)
+            .groupby("Tracto", as_index=False)
+            .first()
+            .nlargest(5, "CPK")
+        )
+
+        # Construir etiqueta de ruta para el título
+        route_label = f"{ciudad_origen} - {ciudad_destino}" if ciudad_origen != "--- Mostrar todas ---" and ciudad_destino != "--- Mostrar todas ---" else ""
+        chart = alt.Chart(top5).mark_bar().encode(
+            x=alt.X("Tracto:N", title="Tracto"),
+            y=alt.Y("CPK:Q", title="CPK", scale=alt.Scale(nice=True)),
+            color=alt.value("#fbc408")
+        ).properties(
+            title=f"Top 5 tractos con mayor CPK en esta ruta ({route_label})",
+            width=500,
+            height=300
+        )
+        st.altair_chart(chart, use_container_width=True)
