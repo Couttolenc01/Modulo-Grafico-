@@ -45,12 +45,15 @@ st.markdown(
 )
 st.markdown("<h1 style='color:#193a73; font-size: 2.8rem; font-weight: 700;'>Visualización de Rutas por Tractos</h1>", unsafe_allow_html=True)
 
+
 # Leer el archivo Excel con caché
 @st.cache_data
 def cargar_datos():
     return pd.read_excel("Base_final.xlsx")
 
 df = cargar_datos()
+ciudad_origen = st.selectbox("Selecciona ciudad de origen:", ["--- Mostrar todas ---"] + sorted(df["Ciudad Origen"].dropna().unique()))
+ciudad_destino = st.selectbox("Selecciona ciudad de destino:", ["--- Mostrar todas ---"] + sorted(df["Ciudad Destino"].dropna().unique()))
 
 # Crear columna combinada de ruta ciudad
 df["Ruta Ciudad"] = df["Ciudad Origen"].astype(str).str.strip() + " - " + df["Ciudad Destino"].astype(str).str.strip()
@@ -65,16 +68,20 @@ df = df[df["kmstotales"].notna() & (df["kmstotales"] > 0)]
 df["Costo Total"] = df["Costo por carga"] + df["Costo Peajes"] + df["Costo Mantenimiento"]
 df["CPK"] = df["Costo Total"] / df["kmstotales"]
 
-ciudad_origen = st.selectbox("Selecciona ciudad de origen:", ["--- Mostrar todas ---"] + sorted(df["Ciudad Origen"].dropna().unique()))
-ciudad_destino = st.selectbox("Selecciona ciudad de destino:", ["--- Mostrar todas ---"] + sorted(df["Ciudad Destino"].dropna().unique()))
 
 if ciudad_origen != "--- Mostrar todas ---" and ciudad_destino != "--- Mostrar todas ---":
     df_filtrado = df[
         (df["Ciudad Origen"] == ciudad_origen) &
         (df["Ciudad Destino"] == ciudad_destino)
     ]
+    if df_filtrado.empty:
+        st.warning("⚠️ No se encontraron tractos que hayan realizado esta ruta. Verifica que exista en los datos.")
+        st.stop()
 elif ciudad_origen != "--- Mostrar todas ---":
     df_filtrado = df[df["Ciudad Origen"] == ciudad_origen]
+    if df_filtrado.empty:
+        st.warning("⚠️ No se encontraron tractos que hayan realizado esta ruta. Verifica que exista en los datos.")
+        st.stop()
 elif ciudad_destino != "--- Mostrar todas ---":
     df_filtrado = df[df["Ciudad Destino"] == ciudad_destino]
 else:
@@ -191,10 +198,13 @@ for _, row in df_rutas.iterrows():
         tooltip="Origen" if not mostrar_todas_rutas else None
     ).add_to(m)
 
-    icon_color = "red"
-    folium.Marker(
+    folium.CircleMarker(
         location=destino,
-        icon=folium.Icon(color=icon_color, icon="remove"),
+        radius=6 if not mostrar_todas_rutas else 4,
+        color="red",
+        fill=True,
+        fill_color="red",
+        fill_opacity=0.9 if not mostrar_todas_rutas else 0.6,
         tooltip="Destino" if not mostrar_todas_rutas else None
     ).add_to(m)
 
@@ -260,6 +270,9 @@ with st.container():
             .nlargest(5, "CPK")
         )
 
+        # Calcular el número real de tractos mostrados en el gráfico
+        num_tractos_top = len(top5)
+
         # Construir etiqueta de ruta para el título
         route_label = f"{ciudad_origen} - {ciudad_destino}" if ciudad_origen != "--- Mostrar todas ---" and ciudad_destino != "--- Mostrar todas ---" else ""
         chart = alt.Chart(top5).mark_bar().encode(
@@ -267,7 +280,7 @@ with st.container():
             y=alt.Y("CPK:Q", title="CPK", scale=alt.Scale(nice=True)),
             color=alt.value("#fbc408")
         ).properties(
-            title=f"Top 5 tractos con mayor CPK en esta ruta ({route_label})",
+            title=f"Top {num_tractos_top} tractos con mayor CPK en esta ruta ({route_label})",
             width=500,
             height=300
         )
